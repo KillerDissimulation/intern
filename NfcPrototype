@@ -1,0 +1,318 @@
+import serial
+import time
+
+# =========================================================
+# CONFIG
+# =========================================================
+
+PORT = "/dev/ttyUSB0"
+BAUD = 115200
+
+# M328GW - Gateway 1
+START_SCAN = bytes.fromhex(
+    "7E 55 09 00 00 01 00 40 00 00 42 22"
+)
+
+GET_RESULT = bytes.fromhex(
+    "7E 55 08 00 00 01 00 41 00 99 11"
+)
+
+# =========================================================
+# LOCAL CARD LIST
+# =========================================================
+
+# Format:
+# UID : Name
+card_list = {}
+
+
+# =========================================================
+# SERIAL CONNECTION
+# =========================================================
+
+ser = serial.Serial(
+    PORT,
+    BAUD,
+    timeout=0.5
+)
+
+time.sleep(1)
+
+
+# =========================================================
+# M328 SCANNER
+# =========================================================
+
+def receive_response():
+    time.sleep(0.1)
+    return ser.read(512)
+
+
+def scan_card():
+
+    ser.reset_input_buffer()
+
+    # Start scan
+    ser.write(START_SCAN)
+    start_response = receive_response()
+
+    if not start_response:
+        return None, None
+
+    time.sleep(0.1)
+
+    # Get scan result
+    ser.write(GET_RESULT)
+    response = receive_response()
+
+    if not response or len(response) < 13:
+        return None, None
+
+    # Payload length
+    payload_length = (
+        response[10] |
+        (response[11] << 8)
+    )
+
+    payload = response[
+        12:12 + payload_length
+    ]
+
+    if len(payload) < 1:
+        return None, None
+
+    reader_count = payload[0]
+
+    if reader_count == 0:
+        return None, None
+
+    record_size = (
+        len(payload) - 1
+    ) // reader_count
+
+    # Check all readers
+    for i in range(reader_count):
+
+        start = 1 + (i * record_size)
+
+        record = payload[
+            start:start + record_size
+        ]
+
+        if len(record) < 8:
+            continue
+
+        uid_raw = record[:8]
+
+        # Empty reader
+        if all(byte == 0 for byte in uid_raw):
+            continue
+
+        uid = uid_raw[::-1].hex().upper()
+
+        reader_number = i + 1
+
+        return uid, reader_number
+
+    return None, None
+
+
+# =========================================================
+# WAIT FOR CARD
+# =========================================================
+
+def wait_for_card():
+
+    print()
+    print("Place card on any reader...")
+    print("Waiting...")
+
+    while True:
+
+        uid, reader = scan_card()
+
+        if uid:
+
+            print()
+            print("Card detected!")
+            print(f"Reader : {reader}")
+            print(f"UID    : {uid}")
+
+            return uid
+
+        time.sleep(0.2)
+
+
+# =========================================================
+# OPTION 1 - READ
+# =========================================================
+
+def read_card():
+
+    print()
+    print("====================================")
+    print("             READ CARD")
+    print("====================================")
+
+    uid = wait_for_card()
+
+    print()
+
+    if uid in card_list:
+
+        print(f"Card ID : {uid}")
+        print(f"Name    : {card_list[uid]}")
+
+    else:
+
+        print(f"Card ID : {uid}")
+        print("Name    : UNREGISTERED")
+
+    print("====================================")
+
+    input("\nPress ENTER to return to menu...")
+
+
+# =========================================================
+# OPTION 2 - EDIT
+# =========================================================
+
+def edit_card():
+
+    print()
+    print("====================================")
+    print("             EDIT CARD")
+    print("====================================")
+
+    uid = wait_for_card()
+
+    print()
+
+    if uid in card_list:
+
+        print(f"Current Name : {card_list[uid]}")
+
+    else:
+
+        print("This card is currently unregistered.")
+
+    print()
+
+    name = input("Enter new name: ").strip()
+
+    if not name:
+
+        print("Name cannot be empty.")
+
+    else:
+
+        # Store UID -> Name
+        card_list[uid] = name
+
+        print()
+        print("CARD UPDATED")
+        print(f"Card ID : {uid}")
+        print(f"Name    : {name}")
+
+    print("====================================")
+
+    input("\nPress ENTER to return to menu...")
+
+
+# =========================================================
+# OPTION 3 - RESET
+# =========================================================
+
+def reset_card():
+
+    print()
+    print("====================================")
+    print("            RESET CARD")
+    print("====================================")
+
+    uid = wait_for_card()
+
+    print()
+
+    if uid in card_list:
+
+        old_name = card_list[uid]
+
+        del card_list[uid]
+
+        print("CARD RESET")
+        print(f"Card ID       : {uid}")
+        print(f"Removed Name  : {old_name}")
+
+    else:
+
+        print(f"Card ID : {uid}")
+        print("Card is already unregistered.")
+
+    print("====================================")
+
+    input("\nPress ENTER to return to menu...")
+
+
+# =========================================================
+# MENU
+# =========================================================
+
+def show_menu():
+
+    print()
+    print("====================================")
+    print("          M328 CARD SYSTEM")
+    print("====================================")
+    print("1. Read Card")
+    print("2. Edit Card")
+    print("3. Reset Card")
+    print("4. Quit")
+    print("====================================")
+
+
+# =========================================================
+# MAIN
+# =========================================================
+
+try:
+
+    while True:
+
+        show_menu()
+
+        choice = input("Select option: ").strip()
+
+        if choice == "1":
+
+            read_card()
+
+        elif choice == "2":
+
+            edit_card()
+
+        elif choice == "3":
+
+            reset_card()
+
+        elif choice == "4":
+
+            print()
+            print("Closing card system...")
+            break
+
+        else:
+
+            print()
+            print("Invalid option. Please select 1-4.")
+
+
+except KeyboardInterrupt:
+
+    print()
+    print("\nProgram stopped.")
+
+
+finally:
+
+    ser.close()
