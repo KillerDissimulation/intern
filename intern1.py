@@ -261,35 +261,43 @@ def show_uid(uid_raw: bytes) -> str:
 def handle_card(ser: serial.Serial, reader: int, uid_raw: bytes) -> None:
     uid = show_uid(uid_raw)
     print("=" * 58)
-    print(f"Reader {reader} detected card UID: {uid}")
 
     try:
         if reader == 1:
             data = read_blocks(ser, reader, uid_raw)
             text = decode_text(data)
-            print("ACTION : READ")
-            print("RAW    :", data.hex(" ").upper())
-            print("DATA   :", text if text else "<EMPTY>")
+
+            print("[READER 1] READ DONE")
+            print(f"Card UID         : {uid}")
+            print(f"Card Information : {text if text else '<EMPTY>'}")
+            print(f"Raw Data         : {data.hex(' ').upper()}")
 
         elif reader == 2:
             text = "chess board"
-            print(f'ACTION : WRITE "{text}"')
             write_blocks(ser, reader, uid_raw, encode_text(text))
-            print("RESULT : WRITE SUCCESS")
+
+            print("[READER 2] WRITE DONE")
+            print(f"Card UID         : {uid}")
+            print(f"Written Data     : {text}")
 
         elif reader == 3:
             text = "checkers board"
-            print(f'ACTION : WRITE "{text}"')
             write_blocks(ser, reader, uid_raw, encode_text(text))
-            print("RESULT : WRITE SUCCESS")
+
+            print("[READER 3] WRITE DONE")
+            print(f"Card UID         : {uid}")
+            print(f"Written Data     : {text}")
 
         elif reader == 4:
-            print("ACTION : CLEAR TEST MEMORY")
             write_blocks(ser, reader, uid_raw, b"\x00" * DATA_SIZE)
-            print("RESULT : RESET SUCCESS")
+
+            print("[READER 4] CLEAR DONE")
+            print(f"Card UID         : {uid}")
+            print("Card Information : <EMPTY>")
 
     except Exception as exc:
-        print("ERROR  :", exc)
+        print(f"[READER {reader}] ERROR")
+        print("Reason:", exc)
 
     print("=" * 58)
     print()
